@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>逆ポーランド記法 (RPN) 視覚化シミュレーター</title>
+    <title>逆ポーランド記法 (RPN) 構造視覚化 & 計算機</title>
     <style>
         * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background-color: #f4f7f6; margin: 0; padding: 20px; color: #333; }
@@ -11,56 +11,64 @@
 
         .control-panel {
             background: white; padding: 20px; border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 900px; margin: 0 auto 20px auto;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 950px; margin: 0 auto 20px auto;
             display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: center;
         }
         input[type="text"] {
             font-size: 1.1rem; padding: 10px 15px; border: 2px solid #ddd;
-            border-radius: 6px; flex-grow: 1; min-width: 250px;
+            border-radius: 6px; flex-grow: 1; min-width: 240px;
         }
         select, button {
-            font-size: 1.0rem; padding: 10px 18px; border: none;
+            font-size: 1.0rem; padding: 10px 16px; border: none;
             border-radius: 6px; cursor: pointer; background: #3498db; color: white;
             transition: background 0.2s;
         }
         button:hover { background: #2980b9; }
         button:disabled { background: #bdc3c7; cursor: not-allowed; }
+        .calc-btn { background: #2ecc71; }
+        .calc-btn:hover { background: #27ae60; }
+
+        .var-inputs-panel {
+            background: #eef9f5; border: 1px solid #a3e4d7; padding: 15px;
+            border-radius: 8px; max-width: 950px; margin: 0 auto 20px auto;
+            display: none; align-items: center; gap: 15px; flex-wrap: wrap;
+        }
+        .var-inputs-container { display: flex; gap: 10px; flex-wrap: wrap; }
+        .var-input-item { display: flex; align-items: center; gap: 4px; font-weight: bold; }
+        .var-input-item input { width: 60px; padding: 5px; text-align: center; }
 
         .workspace {
             display: flex; gap: 20px; max-width: 1000px; margin: 0 auto;
             justify-content: center; align-items: flex-start;
         }
 
-        /* 添付画像の左側：筒状スタック領域 */
         .stack-container {
-            width: 180px; background: white; padding: 15px 15px 5px 15px;
+            width: 200px; background: white; padding: 15px;
             border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             display: flex; flex-direction: column; align-items: center;
         }
         .stack-title { font-weight: bold; margin-bottom: 10px; color: #2c3e50; }
         .stack-tube {
-            width: 100px; height: 320px; border: 4px solid #34495e;
+            width: 110px; height: 340px; border: 4px solid #34495e;
             border-top: none; border-radius: 0 0 15px 15px;
             display: flex; flex-direction: column-reverse; align-items: center;
             padding: 5px; gap: 5px; background: #fafafa; overflow: hidden;
-            position: relative;
         }
 
-        /* トークン要素 */
         .token-item {
-            width: 80px; height: 38px; background: #e74c3c; color: white;
-            font-weight: bold; font-size: 1.2rem; display: flex;
+            width: 90px; height: 38px; background: #e74c3c; color: white;
+            font-weight: bold; font-size: 1.1rem; display: flex;
             align-items: center; justify-content: center; border-radius: 6px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: all 0.4s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: all 0.3s ease;
         }
         .token-item.operand { background: #2ecc71; }
         .token-item.operator { background: #e67e22; }
         .token-item.parenthesis { background: #9b59b6; }
+        .token-item.number { background: #3498db; }
 
-        /* 右側：展開・出力領域 */
         .output-container {
             flex-grow: 1; max-width: 600px; background: white; padding: 20px;
-            border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); min-height: 380px;
+            border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); min-height: 400px;
         }
         .status-box {
             font-size: 1.1rem; padding: 12px; background: #ecf0f1;
@@ -78,7 +86,7 @@
 </head>
 <body>
 
-    <h1>逆ポーランド記法 (RPN) 構造視覚化</h1>
+    <h1>逆ポーランド記法 (RPN) 構造視覚化 & 計算機</h1>
 
     <div class="control-panel">
         <select id="modeSelect">
@@ -86,25 +94,32 @@
             <option value="rpn_to_infix">RPN ➔ 中置記法 (例: A B C D - * +)</option>
         </select>
         <input type="text" id="exprInput" value="A + B * ( C - D )" placeholder="式を入力">
-        <button id="startBtn">実行</button>
+        <button id="startBtn">構文変換</button>
         <button id="prevBtn" disabled>前へ</button>
         <button id="nextBtn" disabled>次へ</button>
         <button id="autoBtn" disabled>自動再生</button>
     </div>
 
+    <!-- 変数代入・計算実行エリア -->
+    <div class="var-inputs-panel" id="varPanel">
+        <span><strong>変数値の設定:</strong></span>
+        <div class="var-inputs-container" id="varInputsContainer"></div>
+        <button class="calc-btn" id="runCalcBtn">RPN式を計算実行 ➔</button>
+    </div>
+
     <div class="workspace">
-        <!-- 画像左側のスタック筒 -->
+        <!-- 添付画像の縦型スタック筒 -->
         <div class="stack-container">
             <div class="stack-title">スタック領域 (Push/Pop)</div>
             <div class="stack-tube" id="stackTube"></div>
         </div>
 
-        <!-- 画像右側の展開・出力エリア -->
+        <!-- 展開・出力エリア -->
         <div class="output-container">
             <h3>現在の処理状態</h3>
-            <div class="status-box" id="statusDesc">「実行」ボタンを押してステップを開始してください。</div>
+            <div class="status-box" id="statusDesc">「構文変換」または「計算実行」を押すとアニメーションが始まります。</div>
 
-            <h3>展開後の出力結果</h3>
+            <h3 id="outputTitle">展開後の出力結果</h3>
             <div class="output-queue" id="outputQueue"></div>
 
             <div class="step-history" id="stepHistory"></div>
@@ -115,7 +130,9 @@
         let steps = [];
         let currentStepIndex = 0;
         let autoTimer = null;
+        let lastRPNTokens = [];
 
+        // 式変換実行
         document.getElementById('startBtn').addEventListener('click', async () => {
             const expr = document.getElementById('exprInput').value;
             const mode = document.getElementById('modeSelect').value;
@@ -129,10 +146,61 @@
             steps = data.steps;
             currentStepIndex = 0;
 
-            document.getElementById('prevBtn').disabled = false;
-            document.getElementById('nextBtn').disabled = false;
-            document.getElementById('autoBtn').disabled = false;
+            // 最後の出力ステップからRPNトークンを保存
+            const finalStep = steps[steps.length - 1];
+            if (mode === 'infix_to_rpn' && finalStep) {
+                lastRPNTokens = finalStep.output;
+                setupVariableInputs(lastRPNTokens);
+            } else {
+                document.getElementById('varPanel').style.display = 'none';
+            }
 
+            document.getElementById('outputTitle').innerText = "展開後の出力結果";
+            enableControls();
+            renderStep(currentStepIndex);
+        });
+
+        // 変数入力欄の生成
+        function setupVariableInputs(tokens) {
+            const variables = [...new Set(tokens.filter(t => /^[A-Za-z]+$/.test(t)))];
+            const container = document.getElementById('varInputsContainer');
+            container.innerHTML = '';
+
+            if (variables.length > 0) {
+                let defaultVal = 10;
+                variables.forEach((v) => {
+                    const div = document.createElement('div');
+                    div.className = 'var-input-item';
+                    div.innerHTML = `${v} = <input type="number" data-var="${v}" value="${defaultVal}">`;
+                    container.appendChild(div);
+                    defaultVal = Math.max(1, defaultVal - 3);
+                });
+                document.getElementById('varPanel').style.display = 'flex';
+            } else if (tokens.length > 0) {
+                document.getElementById('varPanel').style.display = 'flex';
+            } else {
+                document.getElementById('varPanel').style.display = 'none';
+            }
+        }
+
+        // RPN計算アニメーション実行
+        document.getElementById('runCalcBtn').addEventListener('click', async () => {
+            const varValues = {};
+            document.querySelectorAll('#varInputsContainer input').forEach(input => {
+                varValues[input.dataset.var] = parseFloat(input.value) || 0;
+            });
+
+            const res = await fetch('/evaluate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rpn_tokens: lastRPNTokens, var_values: varValues })
+            });
+            const data = await res.json();
+            steps = data.steps;
+            currentStepIndex = 0;
+
+            document.getElementById('outputTitle').innerText = "計算ログ・評価結果";
+            enableControls();
             renderStep(currentStepIndex);
         });
 
@@ -170,7 +238,14 @@
             }
         });
 
+        function enableControls() {
+            document.getElementById('prevBtn').disabled = false;
+            document.getElementById('nextBtn').disabled = false;
+            document.getElementById('autoBtn').disabled = false;
+        }
+
         function getTokenClass(val) {
+            if (!isNaN(val)) return 'number';
             if (/^[A-Za-z0-9]+$/.test(val)) return 'operand';
             if (val === '(' || val === ')') return 'parenthesis';
             return 'operator';
