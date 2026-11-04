@@ -28,7 +28,6 @@
         .calc-btn { background: #2ecc71; }
         .calc-btn:hover { background: #27ae60; }
 
-        /* 変数設定 & RPN表示パネル */
         .var-inputs-panel {
             background: #eef9f5; border: 1px solid #a3e4d7; padding: 15px 20px;
             border-radius: 12px; max-width: 950px; margin: 0 auto 20px auto;
@@ -87,8 +86,32 @@
         }
         .status-box {
             font-size: 1.1rem; padding: 12px; background: #ecf0f1;
-            border-left: 5px solid #3498db; border-radius: 4px; margin-bottom: 20px; min-height: 50px;
+            border-left: 5px solid #3498db; border-radius: 4px; margin-bottom: 15px; min-height: 50px;
         }
+
+        /* アニメーション用：Pop後の演算作業ステージ */
+        .calc-stage-container {
+            background: #fff8e7; border: 2px dashed #f39c12; border-radius: 10px;
+            padding: 15px; margin-bottom: 20px; text-align: center; display: none;
+        }
+        .calc-stage-title { font-weight: bold; color: #d35400; margin-bottom: 10px; }
+        .calc-stage-row {
+            display: flex; justify-content: center; align-items: center; gap: 12px; font-size: 1.3rem; font-weight: bold;
+        }
+        .calc-box {
+            min-width: 60px; height: 45px; border-radius: 6px; display: flex;
+            align-items: center; justify-content: center; padding: 0 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15); transition: all 0.3s;
+        }
+        .calc-box.val { background: #3498db; color: white; }
+        .calc-box.op { background: #e67e22; color: white; }
+        .calc-box.res { background: #2ecc71; color: white; animation: popIn 0.4s ease; }
+
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
         .output-queue {
             display: flex; flex-wrap: wrap; gap: 10px; min-height: 60px;
             padding: 10px; border: 2px dashed #bdc3c7; border-radius: 8px; align-items: center;
@@ -115,7 +138,7 @@
         <button id="autoBtn" disabled>自動再生</button>
     </div>
 
-    <!-- 変数代入・計算実行エリア（RPN表記ヘッダー付き） -->
+    <!-- 変数設定 & RPN表示パネル -->
     <div class="var-inputs-panel" id="varPanel">
         <div class="rpn-formula-box">
             <span>対象のRPN表記:</span>
@@ -144,6 +167,12 @@
             <h3>現在の処理状態</h3>
             <div class="status-box" id="statusDesc">「構文変換」または「計算実行」を押すとアニメーションが始まります。</div>
 
+            <!-- アニメーション用の演算作業ステージ -->
+            <div class="calc-stage-container" id="calcStageContainer">
+                <div class="calc-stage-title">⚙️ Popされた項と演算の実行ステージ</div>
+                <div class="calc-stage-row" id="calcStageRow"></div>
+            </div>
+
             <h3 id="outputTitle">展開後の出力結果</h3>
             <div class="output-queue" id="outputQueue"></div>
 
@@ -156,9 +185,11 @@
         let currentStepIndex = 0;
         let autoTimer = null;
         let lastRPNTokens = [];
+        let isEvalMode = false;
 
         // 構文変換実行
         document.getElementById('startBtn').addEventListener('click', async () => {
+            isEvalMode = false;
             const expr = document.getElementById('exprInput').value;
             const mode = document.getElementById('modeSelect').value;
 
@@ -179,13 +210,14 @@
                 document.getElementById('varPanel').style.display = 'none';
             }
 
+            document.getElementById('calcStageContainer').style.display = 'none';
             document.getElementById('activeRpnBanner').style.display = 'none';
             document.getElementById('outputTitle').innerText = "展開後の出力結果";
+            document.getElementById('outputQueue').style.display = 'flex';
             enableControls();
             renderStep(currentStepIndex);
         });
 
-        // 変数入力欄とRPN表記表示のセットアップ
         function setupVariableInputs(tokens) {
             const rpnString = tokens.join(' ');
             document.getElementById('rpnFormulaDisplay').innerText = rpnString;
@@ -209,6 +241,7 @@
 
         // RPN計算アニメーション実行
         document.getElementById('runCalcBtn').addEventListener('click', async () => {
+            isEvalMode = true;
             const varValues = {};
             document.querySelectorAll('#varInputsContainer input').forEach(input => {
                 varValues[input.dataset.var] = parseFloat(input.value) || 0;
@@ -223,11 +256,11 @@
             steps = data.steps;
             currentStepIndex = 0;
 
-            // バナーに評価対象のRPN式を表示
             const rpnString = lastRPNTokens.join(' ');
             document.getElementById('bannerRpnText').innerText = rpnString;
             document.getElementById('activeRpnBanner').style.display = 'block';
-            document.getElementById('outputTitle').innerText = "計算ログ・評価結果";
+            document.getElementById('outputTitle').style.display = 'none';
+            document.getElementById('outputQueue').style.display = 'none';
 
             enableControls();
             renderStep(currentStepIndex);
@@ -263,7 +296,7 @@
                         autoTimer = null;
                         document.getElementById('autoBtn').innerText = "自動再生";
                     }
-                }, 1000);
+                }, 1200);
             }
         });
 
@@ -284,6 +317,7 @@
             const step = steps[index];
             document.getElementById('statusDesc').innerText = `Step ${index + 1}/${steps.length}: ${step.desc}`;
 
+            // スタック筒の更新
             const tube = document.getElementById('stackTube');
             tube.innerHTML = '';
             step.stack.forEach(item => {
@@ -293,15 +327,39 @@
                 tube.appendChild(div);
             });
 
-            const outputQueue = document.getElementById('outputQueue');
-            outputQueue.innerHTML = '';
-            step.output.forEach(item => {
-                const div = document.createElement('div');
-                div.className = `token-item ${getTokenClass(item)}`;
-                div.innerText = item;
-                outputQueue.appendChild(div);
-            });
+            // 演算ステージの更新（計算実行モード時）
+            const stageContainer = document.getElementById('calcStageContainer');
+            const stageRow = document.getElementById('calcStageRow');
 
+            if (isEvalMode && step.calc_stage) {
+                stageContainer.style.display = 'block';
+                const cs = step.calc_stage;
+                let html = `
+                    <div class="calc-box val">${cs.left}</div>
+                    <div class="calc-box op">${cs.op}</div>
+                    <div class="calc-box val">${cs.right}</div>
+                `;
+                if (cs.res !== null) {
+                    html += ` <span>=</span> <div class="calc-box res">${cs.res}</div>`;
+                }
+                stageRow.innerHTML = html;
+            } else if (!isEvalMode) {
+                stageContainer.style.display = 'none';
+            }
+
+            // 出力エリアの更新（変換モード時）
+            if (!isEvalMode && step.output) {
+                const outputQueue = document.getElementById('outputQueue');
+                outputQueue.innerHTML = '';
+                step.output.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = `token-item ${getTokenClass(item)}`;
+                    div.innerText = item;
+                    outputQueue.appendChild(div);
+                });
+            }
+
+            // 履歴更新
             const history = document.getElementById('stepHistory');
             history.innerHTML = steps.slice(0, index + 1).map((s, i) =>
                 `<div><strong>Step ${i+1}:</strong> ${s.desc}</div>`

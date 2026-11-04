@@ -107,34 +107,48 @@ def rpn_to_infix_steps(expr):
     return steps
 
 def evaluate_rpn_steps(rpn_tokens, var_values):
-    """RPNのトークン列から実際にスタックを使って計算を実行する"""
+    """RPNの評価手順を 1.右Pop ➔ 2.左Pop ➔ 3.演算実行 ➔ 4.結果Push に細分化"""
     stack = []
     steps = []
 
     steps.append({
-        "type": "init", "token": "", "stack": [str(x) for x in stack], "output": [],
+        "type": "init", "token": "", "stack": [str(x) for x in stack], "calc_stage": None,
         "desc": "RPN式の計算評価を開始します。"
     })
 
     for token in rpn_tokens:
-        # 数値または変数
         if token.isalnum():
             val = var_values.get(token, None)
             if val is None:
                 try:
                     val = float(token) if '.' in token else int(token)
                 except ValueError:
-                    val = 1  # デフォルト値
+                    val = 1
 
             stack.append(val)
             steps.append({
-                "type": "push_val", "token": str(val), "stack": [str(x) for x in stack], "output": [],
+                "type": "push_val", "token": str(val), "stack": [str(x) for x in stack], "calc_stage": None,
                 "desc": f"値/変数 '{token}' (= {val}) をスタックに Push"
             })
         elif token in PRECEDENCE:
             if len(stack) >= 2:
+                # 1. 右オペランド(Pop 1回目)
                 b = stack.pop()
+                steps.append({
+                    "type": "pop_b", "token": token, "stack": [str(x) for x in stack],
+                    "calc_stage": {"left": "?", "op": token, "right": str(b), "res": None},
+                    "desc": f"演算子 '{token}' を検出 ➔ スタックから右項 B = {b} を Pop"
+                })
+
+                # 2. 左オペランド(Pop 2回目)
                 a = stack.pop()
+                steps.append({
+                    "type": "pop_a", "token": token, "stack": [str(x) for x in stack],
+                    "calc_stage": {"left": str(a), "op": token, "right": str(b), "res": None},
+                    "desc": f"スタックから左項 A = {a} を Pop ➔ 式 '{a} {token} {b}' が展開されました"
+                })
+
+                # 3. 演算の計算実行
                 res = 0
                 if token == '+': res = a + b
                 elif token == '-': res = a - b
@@ -145,16 +159,24 @@ def evaluate_rpn_steps(rpn_tokens, var_values):
                 if isinstance(res, float) and res.is_integer():
                     res = int(res)
 
+                steps.append({
+                    "type": "calc_eval", "token": token, "stack": [str(x) for x in stack],
+                    "calc_stage": {"left": str(a), "op": token, "right": str(b), "res": str(res)},
+                    "desc": f"計算を実行: {a} {token} {b} = {res}"
+                })
+
+                # 4. 結果の Push
                 stack.append(res)
                 steps.append({
-                    "type": "calc", "token": token, "stack": [str(x) for x in stack], "output": [f"計算結果: {res}"],
-                    "desc": f"Pop: {a} と {b} ➔ 計算 ({a} {token} {b}) = {res} ➔ 結果 {res} を Push"
+                    "type": "push_res", "token": str(res), "stack": [str(x) for x in stack],
+                    "calc_stage": {"left": str(a), "op": token, "right": str(b), "res": str(res)},
+                    "desc": f"計算結果 '{res}' をスタックに Push"
                 })
 
     final_result = stack[-1] if stack else 0
     steps.append({
-        "type": "finish", "token": "=", "stack": [str(x) for x in stack], "output": [f"最終結果: {final_result}"],
-        "desc": f"計算完了！ 最終解 = {final_result}"
+        "type": "finish", "token": "=", "stack": [str(x) for x in stack], "calc_stage": None,
+        "desc": f"すべての計算が完了しました！ 最終解 = {final_result}"
     })
     return steps
 
@@ -184,4 +206,4 @@ def evaluate():
     return jsonify({"steps": steps})
 
 if __name__ == '__main__':
-    app.run(debug=False)
+    app.run(debug=True)
