@@ -11,7 +11,7 @@
 
         .control-panel {
             background: white; padding: 20px; border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 950px; margin: 0 auto 20px auto;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 950px; margin: 0 auto 15px auto;
             display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: center;
         }
         input[type="text"] {
@@ -28,9 +28,19 @@
         .calc-btn { background: #2ecc71; }
         .calc-btn:hover { background: #27ae60; }
 
+        /* 上部：処理対象の入力トークン列エリア */
+        .input-tokens-panel {
+            background: #ffffff; border: 2px solid #34495e; padding: 12px 20px;
+            border-radius: 12px; max-width: 950px; margin: 0 auto 15px auto;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .input-tokens-header { font-weight: bold; color: #2c3e50; margin-bottom: 8px; font-size: 0.95rem; }
+        .input-tokens-row { display: flex; gap: 8px; flex-wrap: wrap; min-height: 45px; align-items: center; }
+
+        /* 変数設定 & RPN表示パネル */
         .var-inputs-panel {
             background: #eef9f5; border: 1px solid #a3e4d7; padding: 15px 20px;
-            border-radius: 12px; max-width: 950px; margin: 0 auto 20px auto;
+            border-radius: 12px; max-width: 950px; margin: 0 auto 15px auto;
             display: none; flex-direction: column; gap: 12px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
@@ -63,10 +73,12 @@
             border-top: none; border-radius: 0 0 15px 15px;
             display: flex; flex-direction: column-reverse; align-items: center;
             padding: 5px; gap: 5px; background: #fafafa; overflow: hidden;
+            position: relative;
         }
 
+        /* トークン要素スタイル */
         .token-item {
-            width: 90px; height: 38px; background: #e74c3c; color: white;
+            width: 85px; height: 38px; color: white;
             font-weight: bold; font-size: 1.1rem; display: flex;
             align-items: center; justify-content: center; border-radius: 6px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: all 0.3s ease;
@@ -75,6 +87,17 @@
         .token-item.operator { background: #e67e22; }
         .token-item.parenthesis { background: #9b59b6; }
         .token-item.number { background: #3498db; }
+        .token-item.active-target { transform: scale(1.1); ring: 3px solid #f1c40f; box-shadow: 0 0 10px #f1c40f; }
+        .token-item.processed { opacity: 0.35; filter: grayscale(50%); }
+
+        /* 飛行中のクローントークン用スタイル */
+        .flying-token {
+            position: fixed !important;
+            z-index: 9999 !important;
+            pointer-events: none;
+            transition: all 0.45s cubic-bezier(0.25, 1, 0.5, 1) !important;
+            box-shadow: 0 8px 15px rgba(0,0,0,0.3) !important;
+        }
 
         .output-container {
             flex-grow: 1; max-width: 600px; background: white; padding: 20px;
@@ -89,7 +112,7 @@
             border-left: 5px solid #3498db; border-radius: 4px; margin-bottom: 15px; min-height: 50px;
         }
 
-        /* アニメーション用：Pop後の演算作業ステージ */
+        /* 演算作業ステージ */
         .calc-stage-container {
             background: #fff8e7; border: 2px dashed #f39c12; border-radius: 10px;
             padding: 15px; margin-bottom: 20px; text-align: center; display: none;
@@ -105,12 +128,7 @@
         }
         .calc-box.val { background: #3498db; color: white; }
         .calc-box.op { background: #e67e22; color: white; }
-        .calc-box.res { background: #2ecc71; color: white; animation: popIn 0.4s ease; }
-
-        @keyframes popIn {
-            0% { transform: scale(0.5); opacity: 0; }
-            100% { transform: scale(1); opacity: 1; }
-        }
+        .calc-box.res { background: #2ecc71; color: white; }
 
         .output-queue {
             display: flex; flex-wrap: wrap; gap: 10px; min-height: 60px;
@@ -128,14 +146,20 @@
 
     <div class="control-panel">
         <select id="modeSelect">
-            <option value="infix_to_rpn">中置記法 ➔ RPN (例: A + B * (C - D))</option>
-            <option value="rpn_to_infix">RPN ➔ 中置記法 (例: A B C D - * +)</option>
+            <option value="infix_to_rpn">中置記法 ➔ RPN (例: 1 + 2 * 3)</option>
+            <option value="rpn_to_infix">RPN ➔ 中置記法 (例: 1 2 3 * +)</option>
         </select>
         <input type="text" id="exprInput" value="1 + 2 * 3" placeholder="式を入力">
         <button id="startBtn">構文変換</button>
         <button id="prevBtn" disabled>前へ</button>
         <button id="nextBtn" disabled>次へ</button>
         <button id="autoBtn" disabled>自動再生</button>
+    </div>
+
+    <!-- 上部：処理対象トークン一覧表示パネル -->
+    <div class="input-tokens-panel">
+        <div class="input-tokens-header">📥 入力トークン列（処理待ち）:</div>
+        <div class="input-tokens-row" id="inputTokensRow"></div>
     </div>
 
     <!-- 変数設定 & RPN表示パネル -->
@@ -186,6 +210,7 @@
         let autoTimer = null;
         let lastRPNTokens = [];
         let isEvalMode = false;
+        let originalTokens = [];
 
         // 構文変換実行
         document.getElementById('startBtn').addEventListener('click', async () => {
@@ -202,6 +227,10 @@
             steps = data.steps;
             currentStepIndex = 0;
 
+            // 初期トークン列を抽出して上部に設置
+            originalTokens = expr.match(/\d+\.\d+|\d+|[A-Za-z]+|[\+\-\*\/\^\(\)]/g) || [];
+            renderInputTokens(originalTokens);
+
             const finalStep = steps[steps.length - 1];
             if (mode === 'infix_to_rpn' && finalStep) {
                 lastRPNTokens = finalStep.output;
@@ -215,7 +244,7 @@
             document.getElementById('outputTitle').innerText = "展開後の出力結果";
             document.getElementById('outputQueue').style.display = 'flex';
             enableControls();
-            renderStep(currentStepIndex);
+            renderStep(currentStepIndex, false);
         });
 
         function setupVariableInputs(tokens) {
@@ -239,6 +268,19 @@
             document.getElementById('varPanel').style.display = 'flex';
         }
 
+        // 上部入力トークン列の描画
+        function renderInputTokens(tokens) {
+            const row = document.getElementById('inputTokensRow');
+            row.innerHTML = '';
+            tokens.forEach((t, idx) => {
+                const div = document.createElement('div');
+                div.className = `token-item ${getTokenClass(t)}`;
+                div.innerText = t;
+                div.id = `input-token-${idx}`;
+                row.appendChild(div);
+            });
+        }
+
         // RPN計算アニメーション実行
         document.getElementById('runCalcBtn').addEventListener('click', async () => {
             isEvalMode = true;
@@ -256,6 +298,10 @@
             steps = data.steps;
             currentStepIndex = 0;
 
+            // RPNトークン列を上部に設定
+            originalTokens = listToEvalTokens(lastRPNTokens, varValues);
+            renderInputTokens(originalTokens);
+
             const rpnString = lastRPNTokens.join(' ');
             document.getElementById('bannerRpnText').innerText = rpnString;
             document.getElementById('activeRpnBanner').style.display = 'block';
@@ -263,20 +309,27 @@
             document.getElementById('outputQueue').style.display = 'none';
 
             enableControls();
-            renderStep(currentStepIndex);
+            renderStep(currentStepIndex, false);
         });
+
+        function listToEvalTokens(tokens, varValues) {
+            return tokens.map(t => {
+                if (varValues[t] !== undefined) return String(varValues[t]);
+                return t;
+            });
+        }
 
         document.getElementById('nextBtn').addEventListener('click', () => {
             if (currentStepIndex < steps.length - 1) {
                 currentStepIndex++;
-                renderStep(currentStepIndex);
+                renderStep(currentStepIndex, true);
             }
         });
 
         document.getElementById('prevBtn').addEventListener('click', () => {
             if (currentStepIndex > 0) {
                 currentStepIndex--;
-                renderStep(currentStepIndex);
+                renderStep(currentStepIndex, false);
             }
         });
 
@@ -290,13 +343,13 @@
                 autoTimer = setInterval(() => {
                     if (currentStepIndex < steps.length - 1) {
                         currentStepIndex++;
-                        renderStep(currentStepIndex);
+                        renderStep(currentStepIndex, true);
                     } else {
                         clearInterval(autoTimer);
                         autoTimer = null;
                         document.getElementById('autoBtn').innerText = "自動再生";
                     }
-                }, 1200);
+                }, 1300);
             }
         });
 
@@ -313,57 +366,145 @@
             return 'operator';
         }
 
-        function renderStep(index) {
+        // 滑らかな飛来アニメーション関数
+        function animateFly(fromElem, toElem, text, tokenClass, callback) {
+            if (!fromElem || !toElem) {
+                if (callback) callback();
+                return;
+            }
+
+            const fromRect = fromElem.getBoundingClientRect();
+            const toRect = toElem.getBoundingClientRect();
+
+            const clone = document.createElement('div');
+            clone.className = `token-item ${tokenClass} flying-token`;
+            clone.innerText = text;
+            clone.style.left = `${fromRect.left}px`;
+            clone.style.top = `${fromRect.top}px`;
+            clone.style.width = `${fromRect.width || 85}px`;
+            clone.style.height = `${fromRect.height || 38}px`;
+            document.body.appendChild(clone);
+
+            // 強制リフロー
+            clone.getBoundingClientRect();
+
+            clone.style.left = `${toRect.left}px`;
+            clone.style.top = `${toRect.top}px`;
+
+            setTimeout(() => {
+                clone.remove();
+                if (callback) callback();
+            }, 450);
+        }
+
+        function renderStep(index, animate = false) {
             const step = steps[index];
             document.getElementById('statusDesc').innerText = `Step ${index + 1}/${steps.length}: ${step.desc}`;
 
-            // スタック筒の更新
             const tube = document.getElementById('stackTube');
-            tube.innerHTML = '';
-            step.stack.forEach(item => {
-                const div = document.createElement('div');
-                div.className = `token-item ${getTokenClass(item)}`;
-                div.innerText = item;
-                tube.appendChild(div);
-            });
-
-            // 演算ステージの更新（計算実行モード時）
+            const outputQueue = document.getElementById('outputQueue');
             const stageContainer = document.getElementById('calcStageContainer');
             const stageRow = document.getElementById('calcStageRow');
 
-            if (isEvalMode && step.calc_stage) {
-                stageContainer.style.display = 'block';
-                const cs = step.calc_stage;
-                let html = `
-                    <div class="calc-box val">${cs.left}</div>
-                    <div class="calc-box op">${cs.op}</div>
-                    <div class="calc-box val">${cs.right}</div>
-                `;
-                if (cs.res !== null) {
-                    html += ` <span>=</span> <div class="calc-box res">${cs.res}</div>`;
+            // 上部トークンの状態更新
+            const targetTokenIndex = getActiveTokenIndex(index);
+            originalTokens.forEach((_, idx) => {
+                const elem = document.getElementById(`input-token-${idx}`);
+                if (elem) {
+                    if (idx === targetTokenIndex) {
+                        elem.className = `token-item ${getTokenClass(originalTokens[idx])} active-target`;
+                    } else if (idx < targetTokenIndex) {
+                        elem.className = `token-item ${getTokenClass(originalTokens[idx])} processed`;
+                    } else {
+                        elem.className = `token-item ${getTokenClass(originalTokens[idx])}`;
+                    }
                 }
-                stageRow.innerHTML = html;
-            } else if (!isEvalMode) {
-                stageContainer.style.display = 'none';
+            });
+
+            // アニメーション判定
+            let fromElem = null;
+            let toElem = null;
+            let flyText = step.token || '';
+            let tokenClass = getTokenClass(flyText);
+
+            if (animate) {
+                if (step.type === 'push' || step.type === 'push_val') {
+                    fromElem = document.getElementById(`input-token-${targetTokenIndex}`);
+                    toElem = tube;
+                } else if (step.type === 'pop' || step.type === 'operand') {
+                    fromElem = tube.firstElementChild || document.getElementById(`input-token-${targetTokenIndex}`);
+                    toElem = outputQueue;
+                } else if (step.type === 'pop_b' || step.type === 'pop_a') {
+                    fromElem = tube.firstElementChild;
+                    toElem = stageContainer;
+                } else if (step.type === 'push_res') {
+                    fromElem = stageContainer;
+                    toElem = tube;
+                }
             }
 
-            // 出力エリアの更新（変換モード時）
-            if (!isEvalMode && step.output) {
-                const outputQueue = document.getElementById('outputQueue');
-                outputQueue.innerHTML = '';
-                step.output.forEach(item => {
+            const applyDOMUpdates = () => {
+                // スタック筒の更新
+                tube.innerHTML = '';
+                step.stack.forEach(item => {
                     const div = document.createElement('div');
                     div.className = `token-item ${getTokenClass(item)}`;
                     div.innerText = item;
-                    outputQueue.appendChild(div);
+                    tube.appendChild(div);
                 });
-            }
 
-            // 履歴更新
-            const history = document.getElementById('stepHistory');
-            history.innerHTML = steps.slice(0, index + 1).map((s, i) =>
-                `<div><strong>Step ${i+1}:</strong> ${s.desc}</div>`
-            ).reverse().join('');
+                // 演算ステージの更新
+                if (isEvalMode && step.calc_stage) {
+                    stageContainer.style.display = 'block';
+                    const cs = step.calc_stage;
+                    let html = `
+                        <div class="calc-box val">${cs.left}</div>
+                        <div class="calc-box op">${cs.op}</div>
+                        <div class="calc-box val">${cs.right}</div>
+                    `;
+                    if (cs.res !== null) {
+                        html += ` <span>=</span> <div class="calc-box res">${cs.res}</div>`;
+                    }
+                    stageRow.innerHTML = html;
+                } else if (!isEvalMode) {
+                    stageContainer.style.display = 'none';
+                }
+
+                // 出力キューの更新
+                if (!isEvalMode && step.output) {
+                    outputQueue.innerHTML = '';
+                    step.output.forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = `token-item ${getTokenClass(item)}`;
+                        div.innerText = item;
+                        outputQueue.appendChild(div);
+                    });
+                }
+
+                // 履歴更新
+                const history = document.getElementById('stepHistory');
+                history.innerHTML = steps.slice(0, index + 1).map((s, i) =>
+                    `<div><strong>Step ${i+1}:</strong> ${s.desc}</div>`
+                ).reverse().join('');
+            };
+
+            if (animate && fromElem && toElem) {
+                animateFly(fromElem, toElem, flyText, tokenClass, applyDOMUpdates);
+            } else {
+                applyDOMUpdates();
+            }
+        }
+
+        // 現在のステップがどの入力トークンに該当するか判定するヘルパー
+        function getActiveTokenIndex(stepIdx) {
+            let count = -1;
+            for (let i = 0; i <= stepIdx; i++) {
+                const type = steps[i].type;
+                if (['push', 'operand', 'push_val', 'pop_b', 'read'].includes(type)) {
+                    count++;
+                }
+            }
+            return Math.max(0, Math.min(count, originalTokens.length - 1));
         }
     </script>
 </body>
