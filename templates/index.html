@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>逆ポーランド記法 (RPN) 視覚化シミュレーター</title>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #f4f7f6; margin: 0; padding: 20px; color: #333; }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 20px; }
+
+        .control-panel {
+            background: white; padding: 20px; border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 900px; margin: 0 auto 20px auto;
+            display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: center;
+        }
+        input[type="text"] {
+            font-size: 1.1rem; padding: 10px 15px; border: 2px solid #ddd;
+            border-radius: 6px; flex-grow: 1; min-width: 250px;
+        }
+        select, button {
+            font-size: 1.0rem; padding: 10px 18px; border: none;
+            border-radius: 6px; cursor: pointer; background: #3498db; color: white;
+            transition: background 0.2s;
+        }
+        button:hover { background: #2980b9; }
+        button:disabled { background: #bdc3c7; cursor: not-allowed; }
+
+        .workspace {
+            display: flex; gap: 20px; max-width: 1000px; margin: 0 auto;
+            justify-content: center; align-items: flex-start;
+        }
+
+        /* 添付画像の左側：筒状スタック領域 */
+        .stack-container {
+            width: 180px; background: white; padding: 15px 15px 5px 15px;
+            border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .stack-title { font-weight: bold; margin-bottom: 10px; color: #2c3e50; }
+        .stack-tube {
+            width: 100px; height: 320px; border: 4px solid #34495e;
+            border-top: none; border-radius: 0 0 15px 15px;
+            display: flex; flex-direction: column-reverse; align-items: center;
+            padding: 5px; gap: 5px; background: #fafafa; overflow: hidden;
+            position: relative;
+        }
+
+        /* トークン要素 */
+        .token-item {
+            width: 80px; height: 38px; background: #e74c3c; color: white;
+            font-weight: bold; font-size: 1.2rem; display: flex;
+            align-items: center; justify-content: center; border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: all 0.4s ease;
+        }
+        .token-item.operand { background: #2ecc71; }
+        .token-item.operator { background: #e67e22; }
+        .token-item.parenthesis { background: #9b59b6; }
+
+        /* 右側：展開・出力領域 */
+        .output-container {
+            flex-grow: 1; max-width: 600px; background: white; padding: 20px;
+            border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); min-height: 380px;
+        }
+        .status-box {
+            font-size: 1.1rem; padding: 12px; background: #ecf0f1;
+            border-left: 5px solid #3498db; border-radius: 4px; margin-bottom: 20px; min-height: 50px;
+        }
+        .output-queue {
+            display: flex; flex-wrap: wrap; gap: 10px; min-height: 60px;
+            padding: 10px; border: 2px dashed #bdc3c7; border-radius: 8px; align-items: center;
+        }
+        .step-history {
+            margin-top: 20px; max-height: 180px; overflow-y: auto;
+            border-top: 1px solid #eee; padding-top: 10px; font-size: 0.9rem; color: #666;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>逆ポーランド記法 (RPN) 構造視覚化</h1>
+
+    <div class="control-panel">
+        <select id="modeSelect">
+            <option value="infix_to_rpn">中置記法 ➔ RPN (例: A + B * (C - D))</option>
+            <option value="rpn_to_infix">RPN ➔ 中置記法 (例: A B C D - * +)</option>
+        </select>
+        <input type="text" id="exprInput" value="A + B * ( C - D )" placeholder="式を入力">
+        <button id="startBtn">実行</button>
+        <button id="prevBtn" disabled>前へ</button>
+        <button id="nextBtn" disabled>次へ</button>
+        <button id="autoBtn" disabled>自動再生</button>
+    </div>
+
+    <div class="workspace">
+        <!-- 画像左側のスタック筒 -->
+        <div class="stack-container">
+            <div class="stack-title">スタック領域 (Push/Pop)</div>
+            <div class="stack-tube" id="stackTube"></div>
+        </div>
+
+        <!-- 画像右側の展開・出力エリア -->
+        <div class="output-container">
+            <h3>現在の処理状態</h3>
+            <div class="status-box" id="statusDesc">「実行」ボタンを押してステップを開始してください。</div>
+
+            <h3>展開後の出力結果</h3>
+            <div class="output-queue" id="outputQueue"></div>
+
+            <div class="step-history" id="stepHistory"></div>
+        </div>
+    </div>
+
+    <script>
+        let steps = [];
+        let currentStepIndex = 0;
+        let autoTimer = null;
+
+        document.getElementById('startBtn').addEventListener('click', async () => {
+            const expr = document.getElementById('exprInput').value;
+            const mode = document.getElementById('modeSelect').value;
+
+            const res = await fetch('/convert', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ expression: expr, mode: mode })
+            });
+            const data = await res.json();
+            steps = data.steps;
+            currentStepIndex = 0;
+
+            document.getElementById('prevBtn').disabled = false;
+            document.getElementById('nextBtn').disabled = false;
+            document.getElementById('autoBtn').disabled = false;
+
+            renderStep(currentStepIndex);
+        });
+
+        document.getElementById('nextBtn').addEventListener('click', () => {
+            if (currentStepIndex < steps.length - 1) {
+                currentStepIndex++;
+                renderStep(currentStepIndex);
+            }
+        });
+
+        document.getElementById('prevBtn').addEventListener('click', () => {
+            if (currentStepIndex > 0) {
+                currentStepIndex--;
+                renderStep(currentStepIndex);
+            }
+        });
+
+        document.getElementById('autoBtn').addEventListener('click', () => {
+            if (autoTimer) {
+                clearInterval(autoTimer);
+                autoTimer = null;
+                document.getElementById('autoBtn').innerText = "自動再生";
+            } else {
+                document.getElementById('autoBtn').innerText = "停止";
+                autoTimer = setInterval(() => {
+                    if (currentStepIndex < steps.length - 1) {
+                        currentStepIndex++;
+                        renderStep(currentStepIndex);
+                    } else {
+                        clearInterval(autoTimer);
+                        autoTimer = null;
+                        document.getElementById('autoBtn').innerText = "自動再生";
+                    }
+                }, 1000);
+            }
+        });
+
+        function getTokenClass(val) {
+            if (/^[A-Za-z0-9]+$/.test(val)) return 'operand';
+            if (val === '(' || val === ')') return 'parenthesis';
+            return 'operator';
+        }
+
+        function renderStep(index) {
+            const step = steps[index];
+            document.getElementById('statusDesc').innerText = `Step ${index + 1}/${steps.length}: ${step.desc}`;
+
+            // スタック筒の更新
+            const tube = document.getElementById('stackTube');
+            tube.innerHTML = '';
+            step.stack.forEach(item => {
+                const div = document.createElement('div');
+                div.className = `token-item ${getTokenClass(item)}`;
+                div.innerText = item;
+                tube.appendChild(div);
+            });
+
+            // 出力エリアの更新
+            const outputQueue = document.getElementById('outputQueue');
+            outputQueue.innerHTML = '';
+            step.output.forEach(item => {
+                const div = document.createElement('div');
+                div.className = `token-item ${getTokenClass(item)}`;
+                div.innerText = item;
+                outputQueue.appendChild(div);
+            });
+
+            // 履歴更新
+            const history = document.getElementById('stepHistory');
+            history.innerHTML = steps.slice(0, index + 1).map((s, i) =>
+                `<div><strong>Step ${i+1}:</strong> ${s.desc}</div>`
+            ).reverse().join('');
+        }
+    </script>
+</body>
+</html>
