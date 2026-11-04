@@ -8,7 +8,6 @@
         * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #f4f7f6; color: #333; }
 
-        /* 700px幅に収めるためのメインコンテナ */
         .app-container {
             max-width: 980px; height: 700px; margin: 0 auto; padding: 10px;
             display: flex; flex-direction: column; justify-content: flex-start;
@@ -35,7 +34,6 @@
         .calc-btn { background: #2ecc71; }
         .calc-btn:hover { background: #27ae60; }
 
-        /* 上部：処理対象トークン一覧表示パネル */
         .input-tokens-panel {
             background: #ffffff; border: 1.5px solid #34495e; padding: 6px 12px;
             border-radius: 8px; margin-bottom: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.04);
@@ -44,7 +42,6 @@
         .input-tokens-header { font-weight: bold; color: #2c3e50; font-size: 0.85rem; white-space: nowrap; }
         .input-tokens-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; flex-grow: 1; }
 
-        /* 変数設定 & RPN表示パネル */
         .var-inputs-panel {
             background: #eef9f5; border: 1px solid #a3e4d7; padding: 6px 12px;
             border-radius: 8px; margin-bottom: 6px; display: none;
@@ -76,7 +73,6 @@
             padding: 4px; gap: 4px; background: #fafafa; overflow: hidden; position: relative;
         }
 
-        /* コンパクト化されたトークン要素 */
         .token-item {
             width: 72px; height: 28px; color: white;
             font-weight: bold; font-size: 0.95rem; display: flex;
@@ -110,7 +106,6 @@
             border-left: 4px solid #3498db; border-radius: 4px; margin-bottom: 8px; min-height: 38px;
         }
 
-        /* 演算作業ステージ */
         .calc-stage-container {
             background: #fff8e7; border: 1.5px dashed #f39c12; border-radius: 8px;
             padding: 8px; margin-bottom: 8px; text-align: center; display: none;
@@ -133,8 +128,10 @@
             display: flex; flex-wrap: wrap; gap: 6px; min-height: 42px;
             padding: 6px; border: 1.5px dashed #bdc3c7; border-radius: 6px; align-items: center;
         }
+
+        /* 上につめるため margin-top: auto から 8px に変更 */
         .step-history {
-            margin-top: auto; max-height: 110px; overflow-y: auto;
+            margin-top: 8px; flex-grow: 1; max-height: 220px; overflow-y: auto;
             border-top: 1px solid #eee; padding-top: 6px; font-size: 0.8rem; color: #666;
         }
     </style>
@@ -156,13 +153,11 @@
             <button id="autoBtn" disabled>自動再生</button>
         </div>
 
-        <!-- 上部：処理対象トークン一覧表示パネル -->
         <div class="input-tokens-panel">
             <div class="input-tokens-header">📥 処理待ちトークン:</div>
             <div class="input-tokens-row" id="inputTokensRow"></div>
         </div>
 
-        <!-- 変数設定 & RPN表示パネル -->
         <div class="var-inputs-panel" id="varPanel">
             <div class="rpn-formula-box">
                 <span>対象RPN:</span>
@@ -176,13 +171,11 @@
         </div>
 
         <div class="workspace">
-            <!-- 縦型スタック筒 -->
             <div class="stack-container">
                 <div class="stack-title">スタック領域 (Push/Pop)</div>
                 <div class="stack-tube" id="stackTube"></div>
             </div>
 
-            <!-- 展開・出力エリア -->
             <div class="output-container">
                 <div class="active-rpn-banner" id="activeRpnBanner" style="display: none;">
                     計算対象 RPN: <span id="bannerRpnText"></span>
@@ -190,7 +183,6 @@
 
                 <div class="status-box" id="statusDesc">「構文変換」または「計算実行」を押すと開始します。</div>
 
-                <!-- 演算作業ステージ -->
                 <div class="calc-stage-container" id="calcStageContainer">
                     <div class="calc-stage-title">⚙️ Popされた項と演算の実行ステージ</div>
                     <div class="calc-stage-row" id="calcStageRow"></div>
@@ -212,7 +204,6 @@
         let isEvalMode = false;
         let originalTokens = [];
 
-        // 構文変換実行
         document.getElementById('startBtn').addEventListener('click', async () => {
             isEvalMode = false;
             const expr = document.getElementById('exprInput').value;
@@ -279,7 +270,6 @@
             });
         }
 
-        // RPN計算アニメーション実行
         document.getElementById('runCalcBtn').addEventListener('click', async () => {
             isEvalMode = true;
             const varValues = {};
